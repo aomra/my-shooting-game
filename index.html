@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Super Shot Shooting Game</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #111;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: sans-serif;
+            color: white;
+            overflow: hidden;
+        }
+        canvas {
+            border: 4px solid #00ffcc;
+            background-color: #050510;
+            box-shadow: 0 0 30px rgba(0, 255, 200, 0.3);
+        }
+    </style>
+</head>
+<body>
+
+<canvas id="gameCanvas" width="450" height="650"></canvas>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+// ゲーム状態
+let score = 0;
+let isGameOver = false;
+
+// 自機の設定
+const player = {
+    x: canvas.width / 2,
+    y: canvas.height - 60,
+    size: 18,
+    color: "#00ffcc"
+};
+
+// 配列管理
+let bullets = [];
+let enemies = [];
+
+// タイマー管理
+let spawnTimer = 0;
+let shootTimer = 0;
+
+// マウス位置の取得
+canvas.addEventListener("mousemove", (e) => {
+    const rect = canvas.getBoundingClientRect();
+    player.x = e.clientX - rect.left;
+    player.y = e.clientY - rect.top; // 上下にも少し動けるように変更
+
+    // 画面外はみ出し制限
+    if (player.x < player.size) player.x = player.size;
+    if (player.x > canvas.width - player.size) player.x = canvas.width - player.size;
+    if (player.y < canvas.height / 2) player.y = canvas.height / 2; // 画面の下半分だけで移動可能
+    if (player.y > canvas.height - player.size) player.y = canvas.height - player.size;
+});
+
+// ゲームオーバー時の画面クリックでリスタート
+canvas.addEventListener("click", () => {
+    if (isGameOver) {
+        resetGame();
+    }
+});
+
+// 自動連射＆5方向ショットの生成ロジック
+function autoShoot() {
+    shootTimer++;
+    if (shootTimer >= 4) { // 数字を小さくするほど連射速度がアップ（4フレームに1回発射）
+        
+        // 5つの異なる角度（X方向の速度）を設定
+        const angles = [-4, -2, 0, 2, 4]; 
+        
+        angles.forEach(angleX => {
+            bullets.push({
+                x: player.x,
+                y: player.y - player.size,
+                vx: angleX,       // 左右への広がり速度
+                vy: -10,          // 上への移動速度（高速化）
+                size: 4,
+                color: "#ffff00"
+            });
+        });
+        
+        shootTimer = 0;
+    }
+}
+
+// 敵の生成ロジック
+function spawnEnemy() {
+    spawnTimer++;
+    if (spawnTimer > 15) { // 爽快感を出すために敵の出現ペースもアップ！
+        enemies.push({
+            x: Math.random() * (canvas.width - 30) + 15,
+            y: -20,
+            speed: Math.random() * 2 + 2,
+            size: 16,
+            color: "#ff3366"
+        });
+        spawnTimer = 0;
+    }
+}
+
+// ゲームのリセット
+function resetGame() {
+    score = 0;
+    bullets = [];
+    enemies = [];
+    isGameOver = false;
+    loop();
+}
+
+// メインの更新ループ
+function update() {
+    if (isGameOver) return;
+
+    // 自動連射と敵生成
+    autoShoot();
+    spawnEnemy();
+
+    // 弾の移動と画面外判定
+    bullets.forEach((b, index) => {
+        b.x += b.vx; // 斜め移動を反映
+        b.y += b.vy;
+        if (b.y < 0 || b.x < 0 || b.x > canvas.width) {
+            bullets.splice(index, 1);
+        }
+    });
+
+    // 敵の移動と判定
+    enemies.forEach((e, index) => {
+        e.y += e.speed;
+        
+        // 敵が画面下に逃げた場合（ペナルティのみでゲームオーバーにはしない）
+        if (e.y > canvas.height) {
+            enemies.splice(index, 1);
+            score = Math.max(0, score - 50); // スコア減少（マイナスにはならない）
+        }
+
+        // 自機との衝突判定
+        const distToPlayer = Math.hypot(e.x - player.x, e.y - player.y);
+        if (distToPlayer < e.size + player.size) {
+            isGameOver = true;
+        }
+    });
+
+    // 弾と敵の衝突判定（まとめて撃破しやすいように調整）
+    bullets.forEach((b, bIndex) => {
+        enemies.forEach((e, eIndex) => {
+            const dist = Math.hypot(b.x - e.x, b.y - e.y);
+            if (dist < b.size + e.size) {
+                enemies.splice(eIndex, 1);
+                bullets.splice(bIndex, 1);
+                score += 100;
+            }
+        });
+    });
+}
+
+// 描画処理
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (isGameOver) {
+        ctx.fillStyle = "white";
+        ctx.font = "32px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2);
+        ctx.font = "22px sans-serif";
+        ctx.fillText(`最終スコア: ${score}`, canvas.width / 2, canvas.height / 2 + 50);
+        ctx.fillStyle = "#00ffcc";
+        ctx.fillText("画面クリックで再挑戦", canvas.width / 2, canvas.height / 2 + 110);
+        return;
+    }
+
+    // 自機の描画（かっこいい形に変更）
+    ctx.fillStyle = player.color;
+    ctx.beginPath();
+    ctx.moveTo(player.x, player.y - player.size);
+    ctx.lineTo(player.x - player.size, player.y + player.size);
+    ctx.lineTo(player.x, player.y + player.size / 2); // 後部を少し凹ませる
+    ctx.lineTo(player.x + player.size, player.y + player.size);
+    ctx.closePath();
+    ctx.fill();
+
+    // 弾の描画（光るエフェクト風）
+    bullets.forEach(b => {
+        ctx.fillStyle = b.color;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.size, 0, Math.PI * 2);
+        ctx.fill();
+    });
+
+    // 敵の描画
+    enemies.forEach(e => {
+        ctx.fillStyle = e.color;
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, e.size, 0, Math.PI * 2);
+        ctx.fill();
+    });
+
+    // スコアの描画
+    ctx.fillStyle = "#00ffcc";
+    ctx.font = "bold 20px sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText(`SCORE: ${score}`, 20, 40);
+}
+
+// ゲームループ
+function loop() {
+    update();
+    draw();
+    if (!isGameOver) {
+        requestAnimationFrame(loop);
+    }
+}
+
+// ゲームスタート
+loop();
+</script>
+</body>
+</html>
