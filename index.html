@@ -2,8 +2,8 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Fixed Layout Shooting Game</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Safe Area Shooting Game</title>
     <style>
         body {
             margin: 0;
@@ -24,10 +24,10 @@
             position: relative;
             width: 100%;
             max-width: 450px;
-            height: 100%;
-            max-height: 750px;
+            height: 94vh; /* 画面全体の高さを少し縮めて、上下に強制的に余裕を持たせる */
             display: flex;
             flex-direction: column;
+            justify-content: space-between;
         }
         canvas {
             width: 100%;
@@ -35,17 +35,18 @@
             background-color: #050510;
             border-bottom: 2px solid #00ffcc;
         }
-        /* ボタンがはみ出さないように調整した操作パネル */
+        /* ブラウザのメニューバー対策を施した操作パネル */
         #controller {
-            height: 130px; /* 高さを少し低く */
+            height: 140px;
             background-color: #151520;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 0 40px 15px 40px; /* 下側に15pxの隙間を作って上に押し上げる */
+            padding: 10px 40px 45px 40px; /* ★下側の余白を45pxに増やし、ボタンを上に避難！ */
             box-sizing: border-box;
+            /* iPhoneのセーフエリア（下の白いバー）がある場合は自動でさらに上に広げる */
+            padding-bottom: calc(45px + env(safe-area-inset-bottom)); 
         }
-        /* スティックの土台を少し小さく */
         #joystickContainer {
             width: 80px;
             height: 80px;
@@ -66,10 +67,9 @@
             box-shadow: 0 0 10px #00ffcc;
             pointer-events: none;
         }
-        /* 攻撃ボタンも少し小さくして位置を最適化 */
         #shotButton {
-            width: 70px;
-            height: 70px;
+            width: 75px;
+            height: 75px;
             background: #ff3366;
             border: none;
             border-radius: 50%;
@@ -87,7 +87,7 @@
 <body>
 
 <div id="gameContainer">
-    <canvas id="gameCanvas" width="450" height="570"></canvas>
+    <canvas id="gameCanvas" width="450" height="550"></canvas>
     <div id="controller">
         <div id="joystickContainer">
             <div id="joystickKnob"></div>
@@ -287,4 +287,45 @@ function draw() {
     }
 
     // 自機
-    ctx.
+    ctx.fillStyle = player.color;
+    ctx.beginPath();
+    ctx.moveTo(player.x, player.y - player.size);
+    ctx.lineTo(player.x - player.size, player.y + player.size);
+    ctx.lineTo(player.x, player.y + player.size / 2);
+    ctx.lineTo(player.x + player.size, player.y + player.size);
+    ctx.closePath();
+    ctx.fill();
+
+    // 弾
+    bullets.forEach(b => {
+        ctx.fillStyle = b.color;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.size, 0, Math.PI * 2);
+        ctx.fill();
+    });
+
+    // 敵
+    enemies.forEach(e => {
+        ctx.fillStyle = e.color;
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, e.size, 0, Math.PI * 2);
+        ctx.fill();
+    });
+
+    // スコア
+    ctx.fillStyle = "#00ffcc";
+    ctx.font = "bold 20px sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText(`SCORE: ${score}`, 20, 40);
+}
+
+function loop() {
+    update();
+    draw();
+    if (!isGameOver) requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>
