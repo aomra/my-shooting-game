@@ -22,78 +22,25 @@
         }
         #gameContainer {
             position: relative;
-            width: 100%;
-            max-width: 450px;
-            height: 94vh; /* 画面全体の高さを少し縮めて、上下に強制的に余裕を持たせる */
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-        }
-        canvas {
-            width: 100%;
-            flex-grow: 1;
-            background-color: #050510;
-            border-bottom: 2px solid #00ffcc;
-        }
-        /* ブラウザのメニューバー対策を施した操作パネル */
-        #controller {
-            height: 140px;
-            background-color: #151520;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px 40px 45px 40px; /* ★下側の余白を45pxに増やし、ボタンを上に避難！ */
-            box-sizing: border-box;
-            /* iPhoneのセーフエリア（下の白いバー）がある場合は自動でさらに上に広げる */
-            padding-bottom: calc(45px + env(safe-area-inset-bottom)); 
-        }
-        #joystickContainer {
-            width: 80px;
-            height: 80px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 2px solid rgba(0, 255, 200, 0.4);
-            border-radius: 50%;
-            position: relative;
+            width: 100vw;
+            height: 100vh;
+            max-width: 450px; /* PC閲覧用の最大幅制限 */
             display: flex;
             justify-content: center;
             align-items: center;
+            background-color: #000;
         }
-        #joystickKnob {
-            width: 32px;
-            height: 32px;
-            background: #00ffcc;
-            border-radius: 50%;
-            position: absolute;
-            box-shadow: 0 0 10px #00ffcc;
-            pointer-events: none;
-        }
-        #shotButton {
-            width: 75px;
-            height: 75px;
-            background: #ff3366;
-            border: none;
-            border-radius: 50%;
-            color: white;
-            font-weight: bold;
-            font-size: 16px;
-            box-shadow: 0 0 15px #ff3366;
-            outline: none;
-        }
-        #shotButton:active {
-            transform: scale(0.95);
+        canvas {
+            width: 100%;
+            height: 100%;
+            background-color: #050510;
         }
     </style>
 </head>
 <body>
 
 <div id="gameContainer">
-    <canvas id="gameCanvas" width="450" height="550"></canvas>
-    <div id="controller">
-        <div id="joystickContainer">
-            <div id="joystickKnob"></div>
-        </div>
-        <button id="shotButton">SHOT</button>
-    </div>
+    <canvas id="gameCanvas" width="450" height="800"></canvas>
 </div>
 
 <script>
@@ -105,9 +52,8 @@ let isGameOver = false;
 
 const player = {
     x: canvas.width / 2,
-    y: canvas.height - 60,
+    y: canvas.height - 100,
     size: 18,
-    speed: 6, 
     color: "#00ffcc"
 };
 
@@ -117,7 +63,13 @@ let spawnTimer = 0;
 let shootTimer = 0;
 
 let isShooting = false;
-let joystickInput = { x: 0, y: 0 };
+
+// --- タッチ操作用の変数（相対移動用） ---
+let touchStartX = 0;
+let touchStartY = 0;
+let playerStartX = 0;
+let playerStartY = 0;
+let isTouching = false;
 
 // --- PCマウス操作 ---
 canvas.addEventListener("mousemove", (e) => {
@@ -130,60 +82,59 @@ canvas.addEventListener("mousemove", (e) => {
     isShooting = true; 
 });
 
-// --- スマホタッチ操作（バーチャルスティック） ---
-const joystickContainer = document.getElementById("joystickContainer");
-const joystickKnob = document.getElementById("joystickKnob");
-
-function handleJoystick(e) {
-    e.preventDefault();
-    if (isGameOver) return;
-    
-    const touch = e.touches[0];
-    const rect = joystickContainer.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
-    
-    let deltaX = touch.clientX - centerX;
-    let deltaY = touch.clientY - centerY;
-    const distance = Math.hypot(deltaX, deltaY);
-    const maxRadius = rect.width / 2;
-
-    if (distance > maxRadius) {
-        deltaX = (deltaX / distance) * maxRadius;
-        deltaY = (deltaY / distance) * maxRadius;
-    }
-
-    joystickKnob.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
-
-    joystickInput.x = deltaX / maxRadius;
-    joystickInput.y = deltaY / maxRadius;
-}
-
-joystickContainer.addEventListener("touchstart", handleJoystick, {passive: false});
-joystickContainer.addEventListener("touchmove", handleJoystick, {passive: false});
-joystickContainer.addEventListener("touchend", () => {
-    joystickKnob.style.transform = "translate(0px, 0px)";
-    joystickInput = { x: 0, y: 0 };
-});
-
-// --- スマホタッチ操作（攻撃ボタン） ---
-const shotButton = document.getElementById("shotButton");
-shotButton.addEventListener("touchstart", (e) => { 
-    e.preventDefault(); 
-    if (isGameOver) {
-        resetGame();
-    } else {
-        isShooting = true; 
-    }
-}, {passive: false});
-
-shotButton.addEventListener("touchend", (e) => {
-    e.preventDefault();
+canvas.addEventListener("mouseleave", () => {
     isShooting = false;
 });
 
-// ゲームオーバー時の復活タップ判定
-window.addEventListener("click", () => { if (isGameOver) resetGame(); });
+// --- スマホタッチ操作（直感的なスライド＆オートショット） ---
+window.addEventListener("touchstart", (e) => {
+    if (isGameOver) {
+        resetGame();
+        return;
+    }
+    
+    isTouching = true;
+    isShooting = true; // 画面に触れている間はオートショット
+
+    const touch = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    
+    // タッチされた初期位置を記録
+    touchStartX = (touch.clientX - rect.left) * scaleX;
+    touchStartY = (touch.clientY - rect.top) * scaleY;
+    
+    // その時のプレイヤーの初期位置を記録
+    playerStartX = player.x;
+    playerStartY = player.y;
+}, {passive: false});
+
+window.addEventListener("touchmove", (e) => {
+    if (!isTouching || isGameOver) return;
+    e.preventDefault(); // 画面のスクロールやバウンスを防止
+    
+    const touch = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    
+    const currentX = (touch.clientX - rect.left) * scaleX;
+    const currentY = (touch.clientY - rect.top) * scaleY;
+    
+    // 指が動いた「差分」を計算
+    const dx = currentX - touchStartX;
+    const dy = currentY - touchStartY;
+    
+    // 自機を指の移動量に合わせて相対的に動かす
+    player.x = playerStartX + dx;
+    player.y = playerStartY + dy;
+}, {passive: false});
+
+window.addEventListener("touchend", () => {
+    isTouching = false;
+    isShooting = false; // 指を離したらショットを停止
+});
 
 function fireWideShot() {
     shootTimer++;
@@ -194,7 +145,7 @@ function fireWideShot() {
                 x: player.x,
                 y: player.y - player.size,
                 vx: angleX,
-                vy: -12,
+                vy: -14, // 画面が縦に伸びたので弾速を少しアップ
                 size: 4,
                 color: "#ffff00"
             });
@@ -205,11 +156,11 @@ function fireWideShot() {
 
 function spawnEnemy() {
     spawnTimer++;
-    if (spawnTimer > 15) {
+    if (spawnTimer > 12) { // 画面が広くなったので少し湧きを早く調整
         enemies.push({
             x: Math.random() * (canvas.width - 30) + 15,
             y: -20,
-            speed: Math.random() * 2 + 2,
+            speed: Math.random() * 3 + 3, // 敵のスピードも少し調整
             size: 16,
             color: "#ff3366"
         });
@@ -223,17 +174,16 @@ function resetGame() {
     enemies = [];
     isGameOver = false;
     isShooting = false;
-    joystickInput = { x: 0, y: 0 };
-    joystickKnob.style.transform = "translate(0px, 0px)";
+    isTouching = false;
+    player.x = canvas.width / 2;
+    player.y = canvas.height - 100;
     loop();
 }
 
 function update() {
     if (isGameOver) return;
 
-    player.x += joystickInput.x * player.speed;
-    player.y += joystickInput.y * player.speed;
-
+    // 画面外へのはみ出し制限（スライド操作でも機能します）
     if (player.x < player.size) player.x = player.size;
     if (player.x > canvas.width - player.size) player.x = canvas.width - player.size;
     if (player.y < player.size) player.y = player.size;
@@ -282,7 +232,7 @@ function draw() {
         ctx.font = "22px sans-serif";
         ctx.fillText(`最終スコア: ${score}`, canvas.width / 2, canvas.height / 2 + 50);
         ctx.fillStyle = "#00ffcc";
-        ctx.fillText("SHOTボタンか画面をタップで復活", canvas.width / 2, canvas.height / 2 + 110);
+        ctx.fillText("画面をタップで復活", canvas.width / 2, canvas.height / 2 + 110);
         return;
     }
 
@@ -322,10 +272,4 @@ function draw() {
 function loop() {
     update();
     draw();
-    if (!isGameOver) requestAnimationFrame(loop);
-}
-
-loop();
-</script>
-</body>
-</html>
+    if (!isGameOver) requestAnimationFrame(
